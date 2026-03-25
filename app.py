@@ -108,6 +108,37 @@ def upload_file(source_real_id: str) -> Optional[dict]:
     return None
 
 
+def is_first_contact_in_integration(customer_id: int, sa_id: int) -> bool:
+    """
+    Проверяет, является ли это первое обращение клиента в данной интеграции.
+    Возвращает True, если у клиента только одно обращение в этой интеграции.
+    """
+    try:
+        # Получаем все обращения клиента
+        r = requests.get(
+            f"{BASE_URL}/leads/all",
+            headers=hdrs(),
+            params={"customer": customer_id, "sa": sa_id, "limit": 200},
+            timeout=10,
+        )
+        if r.status_code == 200:
+            leads = r.json()
+            # Если у клиента только одно обращение в этой интеграции - это первый контакт
+            lead_count = len(leads) if isinstance(leads, list) else 0
+            logger.debug(
+                f"Клиент {customer_id} имеет {lead_count} обращений в интеграции {sa_id}"
+            )
+            return lead_count == 1
+        logger.warning(
+            f"⚠️ Не удалось получить обращения клиента {customer_id}: {r.status_code}"
+        )
+    except requests.exceptions.RequestException as e:
+        logger.error(
+            f"❌ Сетевая ошибка при проверке истории клиента {customer_id}: {e}"
+        )
+    return False
+
+
 def send_voice(lead: dict) -> bool:
     lead_id = lead["id"]
     user_id = lead["userId"]
@@ -181,13 +212,35 @@ def polling_loop():
                     status_id = lead.get("statusId")
 
                     # Только новые клиенты из нужной интеграции с нужным статусом
-                    if sa_id != TARGET_SA_ID or status_id != TARGET_STATUS_ID:
+                    if (
+                        not sa_id
+                        or sa_id != TARGET_SA_ID
+                        or status_id != TARGET_STATUS_ID
+                    ):
+                        _seen_customers.add(customer_id)
+                        continue
+
+                    # ВАЖНО: Проверяем, является ли это первое обращение клиента в интеграции
+                    if not is_first_contact_in_integration(int(customer_id), sa_id):
+                        logger.info(
+                            f"⏭️ Клиент {customer.get('name', '')} (id={customer_id}) уже писал ранее в интеграции {sa_id} — пропускаем"
+                        )
+                        _seen_customers.add(customer_id)
+                        continue
+
+                    # ВАЖНО: Проверяем, является ли это первое обращение клиента в интеграции
+                    if not is_first_contact_in_integration(
+                        int(customer_id), int(sa_id)
+                    ):
+                        logger.info(
+                            f"⏭️ Клиент {customer.get('name', '')} (id={customer_id}) уже писал ранее в интеграции {sa_id} — пропускаем"
+                        )
                         _seen_customers.add(customer_id)
                         continue
 
                     name = customer.get("name", "")
                     logger.info(
-                        f"🆕 Новый клиент: {name} (customer_id={customer_id}, lead_id={lead_id})"
+                        f"🆕 Новый клиент (первый контакт): {name} (customer_id={customer_id}, lead_id={lead_id})"
                     )
                     send_voice(lead)
                     _seen_customers.add(customer_id)
