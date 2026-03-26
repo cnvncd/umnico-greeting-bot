@@ -203,7 +203,7 @@ def is_first_contact_in_integration(customer_id: int, sa_id: int) -> bool:
 
 def send_greeting(lead: dict, greeting_file: str) -> bool:
     lead_id = lead["id"]
-    user_id = lead["userId"]
+    user_id = lead.get("userId")  # userId может быть None для новых обращений
 
     source_real_id = get_source_real_id(lead_id)
     if not source_real_id:
@@ -216,8 +216,12 @@ def send_greeting(lead: dict, greeting_file: str) -> bool:
     payload = {
         "message": {"text": "", "attachment": attachment},
         "source": source_real_id,
-        "userId": user_id,
     }
+
+    # Добавляем userId только если он есть
+    if user_id:
+        payload["userId"] = user_id
+
     try:
         r = requests.post(
             f"{BASE_URL}/messaging/{lead_id}/send",
