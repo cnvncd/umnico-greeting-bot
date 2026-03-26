@@ -29,11 +29,21 @@ LOG_FILE = os.getenv("LOG_FILE", "bot.log")  # файл для логов
 WEBHOOK_PORT = int(os.getenv("WEBHOOK_PORT", "5000"))  # Порт для webhook сервера
 BASE_URL = "https://api.umnico.com/v1.3"
 
-# Конфигурация интеграций: {integration_id: greeting_file}
-INTEGRATIONS = {
-    108954: "Салем_1.ogg",
-    110418: "NURKA Salem.ogg",
-}
+
+# Конфигурация интеграций из .env (формат: ID1:файл1,ID2:файл2)
+def load_integrations():
+    integrations_str = os.getenv(
+        "INTEGRATIONS", "108954:Салем_1.ogg,110418:NURKA Salem.ogg"
+    )
+    integrations = {}
+    for pair in integrations_str.split(","):
+        if ":" in pair:
+            integration_id, filename = pair.split(":", 1)
+            integrations[int(integration_id.strip())] = filename.strip()
+    return integrations
+
+
+INTEGRATIONS = load_integrations()
 # ─────────────────────────────────────────
 
 logging.basicConfig(
